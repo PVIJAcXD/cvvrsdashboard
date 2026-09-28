@@ -37,6 +37,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -239,6 +241,18 @@
             color: #00CED1;
         }
 
+        /* HQ multi-select dropdown */
+        .ms-wrap { position: relative; }
+        .ms-btn { padding: 10px 12px; border: 2px solid #00CED1; border-radius: 6px; font-size: 13px; font-weight: bold; background: white; color: #0a0e27; cursor: pointer; text-align: left; min-width: 160px; width: 100%; }
+        body.dark-mode .ms-btn { background: #1a2035; color: #00CED1; }
+        .ms-panel { display: none; position: absolute; z-index: 1000; top: 100%; left: 0; min-width: 200px; max-height: 260px; overflow-y: auto; margin-top: 2px; padding: 6px; background: white; border: 2px solid #00CED1; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
+        body.dark-mode .ms-panel { background: #1a2035; }
+        .ms-panel.open { display: block; }
+        .ms-panel label { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; font-weight: bold; color: #0a0e27; cursor: pointer; white-space: nowrap; margin: 0; }
+        body.dark-mode .ms-panel label { color: #00CED1; }
+        .ms-panel label:hover { background: rgba(0,206,209,0.15); }
+        .ms-actions { display: flex; gap: 6px; padding: 2px 4px 6px; border-bottom: 1px solid #00CED1; margin-bottom: 4px; }
+        .ms-actions button { flex: 1; padding: 4px; font-size: 11px; font-weight: bold; border: 1px solid #00CED1; border-radius: 4px; background: transparent; color: #00CED1; cursor: pointer; }
         .filter-group select, .filter-group input {
             padding: 10px 12px;
             border: 2px solid #00CED1;
@@ -545,6 +559,22 @@
             0%, 20% { content: '.'; }
             40% { content: '..'; }
             60%, 100% { content: '...'; }
+        }
+
+        /* ---- Overview records table: compact fonts + narrow columns ---- */
+        .overview-table { min-width: 0; table-layout: auto; }
+        .overview-table th { font-size: 10px; padding: 10px 6px; letter-spacing: 0.2px; }
+        .overview-table td { font-size: 11px; padding: 7px 6px; line-height: 1.25; }
+        .overview-table .status-badge { font-size: 9px; padding: 3px 8px; }
+        /* Grid lines */
+        .overview-table { border-collapse: collapse; border: 1px solid #94a3b8; }
+        .overview-table th, .overview-table td { border: 1px solid #94a3b8; }
+        .overview-table th { border-color: rgba(255,255,255,0.35); }
+        body.dark-mode .overview-table { border-color: #475569; }
+        body.dark-mode .overview-table td { border-color: #475569; }
+        .overview-table th.col-narrow, .overview-table td.col-narrow {
+            width: 62px; max-width: 62px; padding-left: 4px; padding-right: 4px;
+            white-space: normal; word-break: break-word;
         }
 
         .status-badge {
@@ -1003,6 +1033,7 @@
                     <button class="btn-load" onclick="loadData()">🔄 Reload</button>
                     <button class="btn-export" onclick="exportToCSV()">📥 CSV</button>
                     <button class="btn-export" onclick="downloadExcel()" style="background: linear-gradient(135deg, #1e7e34 0%, #28a745 100%);">📊 Download Excel</button>
+                    <button class="btn-export" id="generatePdfBtn" onclick="generateMonthPDF()" style="display:none; background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%);">📄 Generate PDF</button>
                 </div>
             </div>
 
@@ -1026,6 +1057,7 @@
                 </div>
                 <div class="button-group">
                     <button class="btn-export" onclick="downloadCLIMatrixExcel()" style="background: linear-gradient(135deg, #1e7e34 0%, #28a745 100%);">📊 Download Excel</button>
+                    <button class="btn-export" onclick="generateCLIMatrixPDF()" style="background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%);">📄 Generate PDF</button>
                 </div>
             </div>
 
@@ -1075,13 +1107,25 @@
                     <input type="text" id="lpMatrixSearch" placeholder="Search LP name..." onkeyup="updateLPMatrix()">
                 </div>
                 <div class="filter-group">
+                    <label for="lpMatrixCMSFilter">🆔 Filter by CMS ID</label>
+                    <input type="text" id="lpMatrixCMSFilter" placeholder="CMS ID (comma separated)..." onkeyup="updateLPMatrix()">
+                </div>
+                <div class="filter-group">
                     <label for="lpMatrixMonthFilter">📅 Filter by Month</label>
                     <select id="lpMatrixMonthFilter" onchange="updateLPMatrix()">
                         <option value="">-- All Months --</option>
                     </select>
                 </div>
+                <div class="filter-group">
+                    <label>🏢 Filter by HQ</label>
+                    <div class="ms-wrap" id="lpHQWrap">
+                        <button type="button" class="ms-btn" id="lpHQBtn" onclick="toggleHQPanel(event)">All HQ ▾</button>
+                        <div class="ms-panel" id="lpHQPanel" onclick="event.stopPropagation()"></div>
+                    </div>
+                </div>
                 <div class="button-group">
                     <button class="btn-export" onclick="exportLPMatrixToCSV()">📥 Export to CSV</button>
+                    <button class="btn-export" onclick="generateLPMatrixPDF()" style="background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%);">📄 Generate PDF</button>
                 </div>
             </div>
 
@@ -1097,8 +1141,19 @@
 
     <script>
         // Your Google Sheet URL - Using CSV format for better compatibility
-        const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxoZ131Aki2PYIghga13ZGUpSiqtR0EQOIRu-o8peiGJWY5PmPrVDvWcmyOfRRFOeOCIdq8VuyY8yW/pub?output=csv";
-        const ACTION_TAKEN_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxoZ131Aki2PYIghga13ZGUpSiqtR0EQOIRu-o8peiGJWY5PmPrVDvWcmyOfRRFOeOCIdq8VuyY8yW/pub?gid=BI&output=csv";
+const SHEET_ID = "1qVZCTDXHG5x7th6NLmsXuhmdTqpksU9vx8xNk-xe_So";
+        const SHEET_GID = "0";
+        // Tried in order; the sheet must be shared as "Anyone with the link - Viewer"
+        const SHEET_URLS = [
+            "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/export?format=csv&gid=" + SHEET_GID,
+            "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + SHEET_GID
+        ];
+        const SHEET_URL = SHEET_URLS[0];
+        // Paste the NUMBER after "gid=" from the BI tab address bar (e.g. "123456789"). Leave empty to skip.
+        const ACTION_TAKEN_GID = "";
+        const ACTION_TAKEN_SHEET_URL = ACTION_TAKEN_GID
+            ? "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxoZ131Aki2PYIghga13ZGUpSiqtR0EQOIRu-o8peiGJWY5PmPrVDvWcmyOfRRFOeOCIdq8VuyY8yW/pub?gid=" + ACTION_TAKEN_GID + "&output=csv"
+            : "";
 
         const USE_CSV = true;
 
@@ -1251,6 +1306,29 @@
                 if (obj['month']) obj['month'] = cleanText(obj['month']).toUpperCase();
                 if (obj['Month']) obj['Month'] = cleanText(obj['Month']).toUpperCase();
                 if (obj['MONTH']) obj['MONTH'] = cleanText(obj['MONTH']).toUpperCase();
+                // ---- Adapt new app-generated sheet columns ----
+                // Overall abnormalities: combine the four "Any Abnormalities" columns
+                if (obj['abnormalities'] === undefined) {
+                    const parts = [];
+                    [['CTO', 'cto - any abnormalities'], ['RUN', 'run - any abnormalities'],
+                     ['HALT', 'halt - any abnormalities'], ['CHO', 'cho - any abnormalities']].forEach(([lbl, k]) => {
+                        if (String(obj[k] || '').trim().toUpperCase() === 'YES') parts.push(lbl);
+                    });
+                    obj['abnormalities'] = obj['Abnormalities'] = parts.length ? parts.join(', ') : 'NIL';
+                }
+                // Date used in the load notice
+                if (!obj['date']) obj['date'] = obj['analysis date'] || obj['working date'] || obj['timestamp'] || '';
+                // Month: if the form left it as "-- Select --" / blank, derive it from the dates
+                const MONTHS = ['JAN', 'FEB', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+                if (!MONTHS.includes(String(obj['month'] || '').toUpperCase())) {
+                    const d = String(obj['analysis date'] || obj['working date'] || obj['timestamp'] || '');
+                    let mi = -1, m;
+                    if ((m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) mi = parseInt(m[2], 10) - 1;
+                    else if ((m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) mi = parseInt(m[2], 10) - 1;
+                    if (mi >= 0 && mi < 12) {
+                        obj['month'] = obj['Month'] = obj['MONTH'] = MONTHS[mi];
+                    }
+                }
                 data.push(obj);
             }
             if (dropped) console.warn(dropped + ' row(s) had a mismatched column count (padded, not dropped)');
@@ -1299,6 +1377,7 @@
 
         // Load Action Taken data from Google Sheets (BI tab)
         async function loadActionTakenData() {
+            if (!ACTION_TAKEN_SHEET_URL) { actionTakenData = []; return; }
             try {
                 // Try to fetch from the BI sheet
                 // Note: The URL needs to be updated with the correct gid for the BI sheet
@@ -1359,20 +1438,22 @@
             noticeContainer.innerHTML = '';
 
             try {
-                // Load main data
-                const response = await fetch(SHEET_URL + (SHEET_URL.includes('?') ? '&' : '?') + '_=' + Date.now(), {
-                    cache: 'no-store',
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/csv'
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Load main data (try each URL until one works)
+                let csvText = '';
+                let lastErr = null;
+                for (const u of SHEET_URLS) {
+                    try {
+                        const response = await fetch(u + (u.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' });
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        csvText = await response.text();
+                        if (csvText.trim().toLowerCase().startsWith('<!doctype') || csvText.includes('<html')) {
+                            throw new Error('Sheet is not public (share it as "Anyone with the link - Viewer")');
+                        }
+                        lastErr = null;
+                        break;
+                    } catch (e) { lastErr = e; console.warn('Sheet URL failed:', u, e); }
                 }
-
-                const csvText = await response.text();
+                if (lastErr) throw lastErr;
                 allData = parseCSV(csvText);
 
                 if (allData.length === 0) {
@@ -1527,6 +1608,10 @@
 
             updateStats();
 
+            // Show Generate PDF button only when month filter is used and table has rows
+            const pdfBtn = document.getElementById('generatePdfBtn');
+            if (pdfBtn) pdfBtn.style.display = (monthFilter && filteredData.length > 0) ? 'inline-block' : 'none';
+
             // Show or hide records container based on filter
             const recordsContainer = document.getElementById('recordsContainer');
             if (hasFilterApplied) {
@@ -1536,6 +1621,74 @@
                 recordsContainer.style.display = 'none';
                 document.getElementById('tableContent').innerHTML = '<div class="no-data">Please select filters above to view records</div>';
             }
+        }
+
+
+        // Generate compact PDF report of the currently displayed (month-filtered) table
+        function generateMonthPDF() {
+            if (!filteredData.length) { alert('No records to export.'); return; }
+            if (!window.jspdf) { alert('PDF library failed to load. Check internet connection.'); return; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const g = (row, keys) => { for (const k of keys) if (row[k]) return String(row[k]); return 'N/A'; };
+            const monthSel = document.getElementById('monthFilter').value;
+            const monthLabel = (!monthSel || monthSel === 'SELECT_ALL') ? 'ALL MONTHS' : monthSel;
+
+            const head = [['S.NO','ANALYSED BY (CLI)','LP NAME','ALP NAME','TRAIN NO','LOCO NO','FROM','TO','SECTION','MONTH','WORKING DATE','LP GROUP CLI','ALP GROUP CLI','ABNORMALITIES','ACTION TAKEN','PDF LINK']];
+            const body = filteredData.map((row, i) => [
+                i + 1,
+                g(row, ['analysed by','Analysed By','CLI Name']),
+                g(row, ['lp name','LP Name','LP NAME']),
+                g(row, ['alp name','ALP Name','ALP NAME']),
+                g(row, ['trainno','Train No','TRAIN NO']),
+                g(row, ['locono','Loco No','LOCO NO']),
+                g(row, ['from station','From Station','FROM STATION']),
+                g(row, ['to station','To Station','TO STATION']),
+                g(row, ['section','Section','SECTION']),
+                g(row, ['month','Month','MONTH']),
+                formatDate(row['working data'] || row['Working Date'] || row['working date']),
+                g(row, ['lp group cli','LP Group CLI','LP GROUP CLI']),
+                g(row, ['alp group cli','ALP Group CLI','ALP GROUP CLI']),
+                g(row, ['abnormalities','Abnormalities']),
+                String(getActionTaken(row)).replace(/<[^>]*>/g, ''),
+                getPdfLink(row) ? 'VIEW PDF' : 'N/A'
+            ]);
+            const pdfLinks = filteredData.map(r => getPdfLink(r));
+
+            const title = 'Monthwise Report - ' + monthLabel;
+            const generated = 'Generated: ' + new Date().toLocaleString('en-GB') + '   |   Total Records: ' + filteredData.length;
+            doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+            doc.text(title, 8, 9);
+            doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+            doc.text(generated, 8, 13);
+
+            doc.autoTable({
+                head: head, body: body, startY: 15,
+                margin: { top: 10, left: 6, right: 6, bottom: 8 },
+                theme: 'grid',
+                styles: { fontSize: 5.5, cellPadding: 0.7, overflow: 'linebreak', valign: 'middle', lineWidth: 0.1 },
+                headStyles: { fillColor: [30, 60, 114], textColor: 255, fontSize: 5.5, halign: 'center' },
+                alternateRowStyles: { fillColor: [240, 244, 250] },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 32 }, 4: { cellWidth: 12 }, 5: { cellWidth: 12 },
+                    9: { cellWidth: 12 }, 10: { cellWidth: 15 }, 13: { cellWidth: 36 }, 14: { cellWidth: 18 }, 15: { cellWidth: 14, halign: 'center' }
+                },
+                didDrawCell: function (d) {
+                    if (d.section === 'body' && d.column.index === 15 && pdfLinks[d.row.index]) {
+                        doc.link(d.cell.x, d.cell.y, d.cell.width, d.cell.height, { url: pdfLinks[d.row.index] });
+                    }
+                },
+                didParseCell: function (d) {
+                    if (d.section === 'body' && d.column.index === 15 && pdfLinks[d.row.index]) {
+                        d.cell.styles.textColor = [183, 28, 28]; d.cell.styles.fontStyle = 'bold';
+                    }
+                },
+                didDrawPage: function () {
+                    doc.setFontSize(6);
+                    doc.text('Page ' + doc.internal.getNumberOfPages(), doc.internal.pageSize.getWidth() - 6, doc.internal.pageSize.getHeight() - 3, { align: 'right' });
+                }
+            });
+            doc.save('Monthwise_Report_' + monthLabel.replace(/\s+/g, '_') + '.pdf');
         }
 
         // Update statistics
@@ -1559,6 +1712,28 @@
         }
 
         // Render table
+        // ---- PDF LINK helper: finds the PDF/Drive link for a record (any header containing pdf/link/url, else any Drive/http URL in the row) ----
+        function getPdfLink(row) {
+            const isUrl = v => /^https?:\/\//i.test(String(v || '').trim());
+            const keys = Object.keys(row);
+            // 1) header contains "pdf"
+            for (const k of keys) if (/pdf/i.test(k) && isUrl(row[k])) return String(row[k]).trim();
+            // 2) header contains link / url / drive
+            for (const k of keys) if (/(link|url|drive|file)/i.test(k) && isUrl(row[k])) return String(row[k]).trim();
+            // 3) any cell holding a Google Drive / PDF URL
+            for (const k of keys) {
+                const v = String(row[k] || '').trim();
+                if (isUrl(v) && (/drive\.google|docs\.google\.com\/(file|document)|\.pdf(\?|$)/i.test(v))) return v;
+            }
+            return '';
+        }
+        function pdfLinkCell(row) {
+            const u = getPdfLink(row);
+            if (!u) return '<span style="color:#999;">N/A</span>';
+            const safe = u.replace(/"/g, '&quot;');
+            return '<a href="' + safe + '" target="_blank" rel="noopener" style="display:inline-block;padding:4px 10px;border-radius:14px;background:linear-gradient(135deg,#b71c1c 0%,#e53935 100%);color:#fff;font-weight:700;font-size:0.8em;text-decoration:none;white-space:nowrap;">📄 VIEW PDF</a>';
+        }
+
         function renderTable() {
             const tableContent = document.getElementById('tableContent');
 
@@ -1568,16 +1743,16 @@
             }
 
             let html = `
-                <table class="data-table">
+                <table class="data-table overview-table">
                     <thead>
                         <tr>
                             <th>#</th>
                             <th>LP NAME</th>
                             <th>ALP NAME</th>
-                            <th>TRAIN NO</th>
-                            <th>LOCO NO</th>
-                            <th>FROM STATION</th>
-                            <th>TO STATION</th>
+                            <th class="col-narrow">TRAIN NO</th>
+                            <th class="col-narrow">LOCO NO</th>
+                            <th class="col-narrow">FROM STATION</th>
+                            <th class="col-narrow">TO STATION</th>
                             <th>SECTION</th>
                             <th>MONTH</th>
                             <th>WORKING DATE</th>
@@ -1586,6 +1761,7 @@
                             <th>ANALYSED BY(CLI)</th>
                             <th>LP GROUP CLI</th>
                             <th>ALP GROUP CLI</th>
+                            <th>PDF LINK</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1613,10 +1789,10 @@
                         <td><strong>${index + 1}</strong></td>
                         <td><strong>${row['lp name'] || row['LP Name'] || row['LP NAME'] || 'N/A'}</strong></td>
                         <td>${row['alp name'] || row['ALP Name'] || row['ALP NAME'] || 'N/A'}</td>
-                        <td>${row['trainno'] || row['Train No'] || row['TRAIN NO'] || 'N/A'}</td>
-                        <td>${row['locono'] || row['Loco No'] || row['LOCO NO'] || 'N/A'}</td>
-                        <td>${row['from station'] || row['From Station'] || row['FROM STATION'] || 'N/A'}</td>
-                        <td>${row['to station'] || row['To Station'] || row['TO STATION'] || 'N/A'}</td>
+                        <td class="col-narrow">${row['trainno'] || row['Train No'] || row['TRAIN NO'] || 'N/A'}</td>
+                        <td class="col-narrow">${row['locono'] || row['Loco No'] || row['LOCO NO'] || 'N/A'}</td>
+                        <td class="col-narrow">${row['from station'] || row['From Station'] || row['FROM STATION'] || 'N/A'}</td>
+                        <td class="col-narrow">${row['to station'] || row['To Station'] || row['TO STATION'] || 'N/A'}</td>
                         <td>${row['section'] || row['Section'] || row['SECTION'] || 'N/A'}</td>
                         <td>${row['month'] || row['Month'] || row['MONTH'] || 'N/A'}</td>
                         <td>${formatDate(row['working data'] || row['Working Date'] || row['working date'])}</td>
@@ -1625,6 +1801,7 @@
                         <td><strong>${row['analysed by'] || row['Analysed By'] || row['CLI Name'] || 'N/A'}</strong></td>
                         <td>${row['lp group cli'] || row['LP Group CLI'] || row['LP GROUP CLI'] || 'N/A'}</td>
                         <td>${row['alp group cli'] || row['ALP Group CLI'] || row['ALP GROUP CLI'] || 'N/A'}</td>
+                        <td>${pdfLinkCell(row)}</td>
                     </tr>
                 `;
             });
@@ -1715,6 +1892,66 @@
             `;
 
             container.innerHTML = html;
+        }
+
+        // Generate compact PDF of CLI Matrix (CLI x Month counts)
+        function generateCLIMatrixPDF() {
+            if (allData.length === 0) { alert('No data available to export!'); return; }
+            if (!window.jspdf) { alert('PDF library failed to load. Check internet connection.'); return; }
+            const cliFilter = document.getElementById('yearlyMatrixCLIFilter').value;
+            const months = ['JAN', 'FEB', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const cliMonthData = {};
+            allData.forEach(row => {
+                const cliName = row['analysed by'] || row['Analysed By'] || row['CLI Name'] || 'Unknown';
+                const month = row['month'] || row['Month'] || row['MONTH'] || 'Unknown';
+                if (cliFilter && cliName !== cliFilter) return;
+                if (!cliMonthData[cliName]) cliMonthData[cliName] = {};
+                cliMonthData[cliName][month] = (cliMonthData[cliName][month] || 0) + 1;
+            });
+            const sortedCLIs = Object.keys(cliMonthData).sort();
+            if (sortedCLIs.length === 0) { alert('No data available for the selected filters.'); return; }
+
+            const colTotals = new Array(months.length).fill(0);
+            let grand = 0;
+            const body = sortedCLIs.map((cli, i) => {
+                let total = 0;
+                const cells = months.map((m, mi) => {
+                    const c = cliMonthData[cli][m] || 0;
+                    total += c; colTotals[mi] += c;
+                    return c || '';
+                });
+                grand += total;
+                return [i + 1, cli, ...cells, total];
+            });
+            body.push(['', 'TOTAL', ...colTotals.map(c => c || ''), grand]);
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+            doc.text('CLI MONTHWISE DATA ANALYSIS DATA', doc.internal.pageSize.getWidth() / 2, 10, { align: 'center' });
+            doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+            doc.text('Generated: ' + new Date().toLocaleString('en-GB') + (cliFilter ? '   |   CLI: ' + cliFilter : ''), doc.internal.pageSize.getWidth() / 2, 14, { align: 'center' });
+
+            const colStyles = { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 55 } };
+            for (let i = 2; i <= months.length + 2; i++) colStyles[i] = { halign: 'center' };
+            doc.autoTable({
+                head: [['S NO', 'CLI NAME', ...months, 'TOTAL']],
+                body: body, startY: 17,
+                margin: { top: 10, left: 8, right: 8, bottom: 8 },
+                theme: 'grid',
+                styles: { fontSize: 7, cellPadding: 1, valign: 'middle', lineWidth: 0.1 },
+                headStyles: { fillColor: [30, 60, 114], textColor: 255, halign: 'center' },
+                alternateRowStyles: { fillColor: [240, 244, 250] },
+                columnStyles: colStyles,
+                didParseCell: function (d) {
+                    if (d.section === 'body' && d.row.index === body.length - 1) {
+                        d.cell.styles.fontStyle = 'bold';
+                        d.cell.styles.fillColor = [220, 228, 240];
+                    }
+                    if (d.section === 'body' && d.column.index === months.length + 2) d.cell.styles.fontStyle = 'bold';
+                }
+            });
+            doc.save('CLI_Monthwise_Data_Analysis.pdf');
         }
 
         // Update CLI Monthwise Data Analysis
@@ -1940,9 +2177,112 @@
         }
 
         // Update LP Matrix Data
+        // LP -> HQ lookup (uses 'LP HQ' column if present, else 'HQ' column of the sheet)
+        function getLPHQ(lpName) {
+            if (!getLPHQ.cache || getLPHQ.src !== allData) {
+                getLPHQ.src = allData; getLPHQ.cache = {};
+                const norm = k => String(k).toLowerCase().replace(/[^a-z]/g, '');
+                allData.forEach(row => {
+                    const name = row['lp name'] || row['LP Name'] || row['LP NAME'] || 'Unknown';
+                    if (getLPHQ.cache[name]) return;
+                    const keys = Object.keys(row);
+                    const k = keys.find(k => ['lphq', 'lpheadquarter', 'lpheadquarters'].includes(norm(k))) ||
+                              keys.find(k => norm(k) === 'hq');
+                    const v = k ? String(row[k] || '').trim() : '';
+                    if (v) getLPHQ.cache[name] = v;
+                });
+            }
+            return getLPHQ.cache[lpName] || 'N/A';
+        }
+
+        // ===== HQ multi-select filter (LP Matrix) =====
+        let lpHQSelected = new Set();   // empty = all HQs
+        let lpHQBuiltFor = null;
+
+        function buildHQFilter() {
+            if (lpHQBuiltFor === allData) return;
+            lpHQBuiltFor = allData;
+            lpHQSelected = new Set();
+            const hqs = new Set();
+            allData.forEach(row => {
+                const name = row['lp name'] || row['LP Name'] || row['LP NAME'] || 'Unknown';
+                hqs.add(getLPHQ(name));
+            });
+            const list = Array.from(hqs).sort();
+            const panel = document.getElementById('lpHQPanel');
+            panel.innerHTML = '<div class="ms-actions"><button type="button" onclick="hqSelectAll(true)">Select All</button><button type="button" onclick="hqSelectAll(false)">Clear</button></div>' +
+                list.map(h => `<label><input type="checkbox" value="${h}" onchange="onHQChange()"> ${h}</label>`).join('');
+            updateHQButton();
+        }
+
+        function toggleHQPanel(e) {
+            e.stopPropagation();
+            document.getElementById('lpHQPanel').classList.toggle('open');
+        }
+
+        function hqSelectAll(state) {
+            document.querySelectorAll('#lpHQPanel input[type=checkbox]').forEach(cb => cb.checked = state);
+            onHQChange();
+        }
+
+        function onHQChange() {
+            lpHQSelected = new Set(Array.from(document.querySelectorAll('#lpHQPanel input:checked')).map(cb => cb.value));
+            updateHQButton();
+            updateLPMatrix();
+        }
+
+        function updateHQButton() {
+            const btn = document.getElementById('lpHQBtn');
+            const n = lpHQSelected.size;
+            btn.textContent = (n === 0 ? 'All HQ' : (n <= 2 ? Array.from(lpHQSelected).join(', ') : n + ' HQ selected')) + ' ▾';
+        }
+
+        document.addEventListener('click', () => {
+            const p = document.getElementById('lpHQPanel');
+            if (p) p.classList.remove('open');
+        });
+
+        // LP -> extra info lookup (CMS ID, Group CLI) from sheet columns
+        function getLPInfo(lpName, field) {
+            const specs = {
+                cms: ['lpcmsid', 'cmsid', 'lpcms', 'cms'],
+                groupcli: ['lpgroupcli', 'lpgroupcliname', 'groupcliname', 'groupcli']
+            };
+            if (!getLPInfo.cache || getLPInfo.src !== allData) {
+                getLPInfo.src = allData; getLPInfo.cache = { cms: {}, groupcli: {} };
+                const norm = k => String(k).toLowerCase().replace(/[^a-z]/g, '');
+                allData.forEach(row => {
+                    const name = row['lp name'] || row['LP Name'] || row['LP NAME'] || 'Unknown';
+                    const keys = Object.keys(row);
+                    Object.keys(specs).forEach(f => {
+                        if (getLPInfo.cache[f][name]) return;
+                        let k = null;
+                        for (const cand of specs[f]) { k = keys.find(x => norm(x) === cand); if (k) break; }
+                        const v = k ? String(row[k] || '').trim() : '';
+                        if (v) getLPInfo.cache[f][name] = v;
+                    });
+                });
+            }
+            return getLPInfo.cache[field][lpName] || 'N/A';
+        }
+
+        // CMS ID filter helper (partial match, comma separated allowed)
+        function getCMSFilterTerms() {
+            const el = document.getElementById('lpMatrixCMSFilter');
+            if (!el) return [];
+            return el.value.toUpperCase().split(',').map(t => t.trim()).filter(Boolean);
+        }
+        function cmsMatches(lpName, terms) {
+            if (!terms.length) return true;
+            const id = String(getLPInfo(lpName, 'cms')).toUpperCase();
+            return terms.some(t => id.includes(t));
+        }
+
         function updateLPMatrix() {
+            buildHQFilter();
             const searchTerm = document.getElementById('lpMatrixSearch').value.toUpperCase();
             const monthFilter = document.getElementById('lpMatrixMonthFilter').value;
+            const cmsTerms = getCMSFilterTerms();
             const container = document.getElementById('lpMatrixContent');
 
             // Group data by LP Name and Month
@@ -1954,6 +2294,8 @@
 
                 // Apply filters
                 if (searchTerm && !lpName.toUpperCase().includes(searchTerm)) return;
+                if (lpHQSelected.size && !lpHQSelected.has(getLPHQ(lpName))) return;
+                if (!cmsMatches(lpName, cmsTerms)) return;
                 if (monthFilter && month !== monthFilter) return;
 
                 if (!lpMonthData[lpName]) {
@@ -1996,6 +2338,9 @@
                         <tr>
                             <th>S NO</th>
                             <th>LP NAME</th>
+                            <th>HQ</th>
+                            <th>CMS ID</th>
+                            <th>GROUP CLI NAME</th>
                             ${sortedMonths.map(month => `<th>${month}</th>`).join('')}
                             <th>TOTAL</th>
                         </tr>
@@ -2011,6 +2356,9 @@
                     <tr>
                         <td><strong>${index + 1}</strong></td>
                         <td><strong>${lpName}</strong></td>
+                        <td>${getLPHQ(lpName)}</td>
+                        <td>${getLPInfo(lpName, 'cms')}</td>
+                        <td>${getLPInfo(lpName, 'groupcli')}</td>
                 `;
 
                 sortedMonths.forEach(month => {
@@ -2034,10 +2382,95 @@
             container.innerHTML = html;
         }
 
+        // Generate compact PDF of LP Matrix (LP x Month counts)
+        function generateLPMatrixPDF() {
+            if (allData.length === 0) { alert('No data available to export!'); return; }
+            if (!window.jspdf) { alert('PDF library failed to load. Check internet connection.'); return; }
+            const searchTerm = document.getElementById('lpMatrixSearch').value.toUpperCase();
+            const monthFilter = document.getElementById('lpMatrixMonthFilter').value;
+            const cmsTerms = getCMSFilterTerms();
+            const lpMonthData = {};
+            allData.forEach(row => {
+                const lpName = row['lp name'] || row['LP Name'] || row['LP NAME'] || 'Unknown';
+                const month = row['month'] || row['Month'] || row['MONTH'] || 'Unknown';
+                if (searchTerm && !lpName.toUpperCase().includes(searchTerm)) return;
+                if (lpHQSelected.size && !lpHQSelected.has(getLPHQ(lpName))) return;
+                if (!cmsMatches(lpName, cmsTerms)) return;
+                if (monthFilter && month !== monthFilter) return;
+                if (!lpMonthData[lpName]) lpMonthData[lpName] = {};
+                lpMonthData[lpName][month] = (lpMonthData[lpName][month] || 0) + 1;
+            });
+            const monthOrder = ['JAN', 'FEB', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const allMonths = new Set();
+            Object.values(lpMonthData).forEach(m => Object.keys(m).forEach(k => allMonths.add(k)));
+            const months = Array.from(allMonths).sort((a, b) => {
+                const ia = monthOrder.indexOf(a.toUpperCase()), ib = monthOrder.indexOf(b.toUpperCase());
+                if (ia === -1) return 1;
+                if (ib === -1) return -1;
+                return ia - ib;
+            });
+            const lpNames = Object.keys(lpMonthData).sort();
+            if (lpNames.length === 0) { alert('No data available for the selected filters.'); return; }
+
+            const colTotals = new Array(months.length).fill(0);
+            let grand = 0;
+            const body = lpNames.map((lp, i) => {
+                let total = 0;
+                const cells = months.map((m, mi) => {
+                    const c = lpMonthData[lp][m] || 0;
+                    total += c; colTotals[mi] += c;
+                    return c > 0 ? c : '-';
+                });
+                grand += total;
+                return [i + 1, lp, getLPHQ(lp), getLPInfo(lp, 'cms'), getLPInfo(lp, 'groupcli'), ...cells, total];
+            });
+            body.push(['', 'TOTAL', '', '', '', ...colTotals.map(c => c || '-'), grand]);
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const pw = doc.internal.pageSize.getWidth();
+            doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+            doc.text('LP WISE DATA ANALYSIS RECORD', pw / 2, 10, { align: 'center' });
+            doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+            let sub = 'Generated: ' + new Date().toLocaleString('en-GB') + '   |   LPs: ' + lpNames.length;
+            if (monthFilter) sub += '   |   Month: ' + monthFilter;
+            if (searchTerm) sub += '   |   Search: ' + searchTerm;
+            if (lpHQSelected.size) sub += '   |   HQ: ' + Array.from(lpHQSelected).join(', ');
+            if (cmsTerms.length) sub += '   |   CMS ID: ' + cmsTerms.join(', ');
+            doc.text(sub, pw / 2, 14, { align: 'center' });
+
+            const lastCol = months.length + 5;
+            const colStyles = { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 55 }, 2: { cellWidth: 14, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' }, 4: { cellWidth: 40 } };
+            for (let i = 5; i <= lastCol; i++) colStyles[i] = { halign: 'center' };
+            doc.autoTable({
+                head: [['S NO', 'LP NAME', 'HQ', 'CMS ID', 'GROUP CLI NAME', ...months, 'TOTAL']],
+                body: body, startY: 17,
+                margin: { top: 10, left: 8, right: 8, bottom: 8 },
+                theme: 'grid',
+                styles: { fontSize: 6.5, cellPadding: 0.8, valign: 'middle', lineWidth: 0.1 },
+                headStyles: { fillColor: [30, 60, 114], textColor: 255, halign: 'center' },
+                alternateRowStyles: { fillColor: [240, 244, 250] },
+                columnStyles: colStyles,
+                didParseCell: function (d) {
+                    if (d.section === 'body' && d.row.index === body.length - 1) {
+                        d.cell.styles.fontStyle = 'bold';
+                        d.cell.styles.fillColor = [220, 228, 240];
+                    }
+                    if (d.section === 'body' && d.column.index === lastCol) d.cell.styles.fontStyle = 'bold';
+                },
+                didDrawPage: function () {
+                    doc.setFontSize(6);
+                    doc.text('Page ' + doc.internal.getNumberOfPages(), pw - 8, doc.internal.pageSize.getHeight() - 3, { align: 'right' });
+                }
+            });
+            doc.save('LP_Wise_Data_Analysis_Record.pdf');
+        }
+
         // Export LP Matrix to CSV
         function exportLPMatrixToCSV() {
             const searchTerm = document.getElementById('lpMatrixSearch').value.toUpperCase();
             const monthFilter = document.getElementById('lpMatrixMonthFilter').value;
+            const cmsTerms = getCMSFilterTerms();
 
             // Group data by LP Name and Month
             const lpMonthData = {};
@@ -2047,6 +2480,8 @@
                 const month = row['month'] || row['Month'] || row['MONTH'] || 'Unknown';
 
                 if (searchTerm && !lpName.toUpperCase().includes(searchTerm)) return;
+                if (lpHQSelected.size && !lpHQSelected.has(getLPHQ(lpName))) return;
+                if (!cmsMatches(lpName, cmsTerms)) return;
                 if (monthFilter && month !== monthFilter) return;
 
                 if (!lpMonthData[lpName]) {
@@ -2076,12 +2511,12 @@
             const sortedLPNames = Object.keys(lpMonthData).sort();
 
             // Create CSV content
-            let csvContent = 'S NO,LP NAME,' + sortedMonths.join(',') + ',TOTAL\n';
+            let csvContent = 'S NO,LP NAME,HQ,CMS ID,GROUP CLI NAME,' + sortedMonths.join(',') + ',TOTAL\n';
 
             sortedLPNames.forEach((lpName, index) => {
                 const monthData = lpMonthData[lpName];
                 let total = 0;
-                const rowData = [index + 1, lpName];
+                const rowData = [index + 1, lpName, getLPHQ(lpName), getLPInfo(lpName, 'cms'), getLPInfo(lpName, 'groupcli')];
 
                 sortedMonths.forEach(month => {
                     const count = monthData[month] || 0;
@@ -2121,7 +2556,7 @@
                 return;
             }
 
-            const headers = ['LP NAME', 'ALP NAME', 'TRAIN NO', 'LOCO NO', 'FROM STATION', 'TO STATION', 'SECTION', 'MONTH', 'WORKING DATE', 'ABNORMALITIES', 'ACTION TAKEN', 'ANALYSED BY(CLI)', 'LP GROUP CLI', 'ALP GROUP CLI'];
+            const headers = ['LP NAME', 'ALP NAME', 'TRAIN NO', 'LOCO NO', 'FROM STATION', 'TO STATION', 'SECTION', 'MONTH', 'WORKING DATE', 'ABNORMALITIES', 'ACTION TAKEN', 'ANALYSED BY(CLI)', 'LP GROUP CLI', 'ALP GROUP CLI', 'PDF LINK'];
             let csvContent = headers.join(',') + '\n';
 
             filteredData.forEach((row, index) => {
@@ -2140,7 +2575,8 @@
                     actionTaken.replace(/,/g, ';'),
                     row['analysed by'] || row['Analysed By'] || row['CLI Name'] || 'N/A',
                     row['lp group cli'] || row['LP Group CLI'] || row['LP GROUP CLI'] || 'N/A',
-                    row['alp group cli'] || row['ALP Group CLI'] || row['ALP GROUP CLI'] || 'N/A'
+                    row['alp group cli'] || row['ALP Group CLI'] || row['ALP GROUP CLI'] || 'N/A',
+                    getPdfLink(row) || 'N/A'
                 ];
 
                 csvContent += rowData.map(field => `"${field}"`).join(',') + '\n';
@@ -2165,7 +2601,7 @@
             }
 
             // Prepare data with headers
-            const headers = ['LP NAME', 'ALP NAME', 'TRAIN NO', 'LOCO NO', 'FROM STATION', 'TO STATION', 'SECTION', 'MONTH', 'WORKING DATE', 'ABNORMALITIES', 'ACTION TAKEN', 'ANALYSED BY(CLI)', 'LP GROUP CLI', 'ALP GROUP CLI'];
+            const headers = ['LP NAME', 'ALP NAME', 'TRAIN NO', 'LOCO NO', 'FROM STATION', 'TO STATION', 'SECTION', 'MONTH', 'WORKING DATE', 'ABNORMALITIES', 'ACTION TAKEN', 'ANALYSED BY(CLI)', 'LP GROUP CLI', 'ALP GROUP CLI', 'PDF LINK'];
 
             const excelData = filteredData.map((row, index) => {
                 const actionTaken = getActionTaken(row);
@@ -2185,7 +2621,8 @@
                     actionTaken,
                     row['analysed by'] || row['Analysed By'] || row['CLI Name'] || 'N/A',
                     row['lp group cli'] || row['LP Group CLI'] || row['LP GROUP CLI'] || 'N/A',
-                    row['alp group cli'] || row['ALP Group CLI'] || row['ALP GROUP CLI'] || 'N/A'
+                    row['alp group cli'] || row['ALP Group CLI'] || row['ALP GROUP CLI'] || 'N/A',
+                    getPdfLink(row) || 'N/A'
                 ];
             });
 
@@ -2210,7 +2647,8 @@
                 { wch: 30 }, // ACTION TAKEN
                 { wch: 20 }, // ANALYSED BY(CLI)
                 { wch: 15 }, // LP GROUP CLI
-                { wch: 15 }  // ALP GROUP CLI
+                { wch: 15 }, // ALP GROUP CLI
+                { wch: 40 }  // PDF LINK
             ];
             ws['!cols'] = colWidths;
 
