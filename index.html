@@ -26,6 +26,8 @@
 
 
 
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1182,42 +1184,77 @@
             return 'N/A';
         }
 
-        // Parse CSV to JSON
+        // Clean a text value: NBSP/zero-width chars -> normal space, collapse spaces, trim
+        function cleanText(v) {
+            return String(v == null ? '' : v)
+                .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Normalise CLI names so "NAME/CLI/BIA (R0065 )", "NAME/CLI/BIA ( R0065)" etc. all match
+        function normalizeCLIName(v) {
+            return cleanText(v)
+                .replace(/\(\s*/g, '(')      // "( R0065" -> "(R0065"
+                .replace(/\s*\)/g, ')')      // "R0065 )" -> "R0065)"
+                .replace(/\s*\/\s*/g, '/')  // " / " -> "/"
+                .replace(/\s+\(/g, ' (')     // exactly one space before "("
+                .toUpperCase();
+        }
+
+        // Robust CSV parser (RFC 4180): handles quoted commas, "" escapes and line breaks inside cells
         function parseCSV(csv) {
-            const lines = csv.split('\n').filter(line => line.trim());
-            if (lines.length === 0) return [];
-
-            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-            const data = [];
-
-            for (let i = 1; i < lines.length; i++) {
-                const values = [];
-                let current = '';
-                let inQuotes = false;
-
-                for (let char of lines[i]) {
-                    if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        values.push(current.trim().replace(/^"|"$/g, ''));
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                values.push(current.trim().replace(/^"|"$/g, ''));
-
-                if (values.length === headers.length) {
-                    const row = {};
-                    headers.forEach((header, index) => {
-                        // Store with both original header and lowercase version for case-insensitive access
-                        row[header] = values[index];
-                        row[header.toLowerCase()] = values[index];
-                    });
-                    data.push(row);
-                }
+            if (csv.charCodeAt(0) === 0xFEFF) csv = csv.slice(1);
+            const rows = [];
+            let row = [], cur = '', inQ = false;
+            for (let i = 0; i < csv.length; i++) {
+                const c = csv[i];
+                if (inQ) {
+                    if (c === '"') {
+                        if (csv[i + 1] === '"') { cur += '"'; i++; }
+                        else inQ = false;
+                    } else cur += c;
+                } else if (c === '"') inQ = true;
+                else if (c === ',') { row.push(cur); cur = ''; }
+                else if (c === '\n' || c === '\r') {
+                    if (c === '\r' && csv[i + 1] === '\n') i++;
+                    row.push(cur); cur = '';
+                    rows.push(row); row = [];
+                } else cur += c;
             }
+            if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
 
+            const nonEmpty = rows.filter(r => r.some(v => v.trim() !== ''));
+            if (nonEmpty.length === 0) return [];
+            const headers = nonEmpty[0].map(h => cleanText(h));
+            const data = [];
+            let dropped = 0;
+
+            for (let i = 1; i < nonEmpty.length; i++) {
+                const values = nonEmpty[i].map(v => v.trim());
+                // Never drop a row just because the column count differs: pad / trim instead
+                if (values.length !== headers.length) {
+                    dropped++;
+                    console.warn('CSV row ' + (i + 1) + ' has ' + values.length + ' columns, expected ' + headers.length, values);
+                    while (values.length < headers.length) values.push('');
+                    values.length = headers.length;
+                }
+                const obj = {};
+                headers.forEach((header, index) => {
+                    obj[header] = values[index];
+                    obj[header.toLowerCase()] = values[index];
+                });
+                // Normalise CLI name so grouping / filtering is consistent
+                ['analysed by', 'Analysed By', 'CLI Name'].forEach(k => {
+                    if (obj[k]) obj[k] = normalizeCLIName(obj[k]);
+                });
+                if (obj['month']) obj['month'] = cleanText(obj['month']).toUpperCase();
+                if (obj['Month']) obj['Month'] = cleanText(obj['Month']).toUpperCase();
+                if (obj['MONTH']) obj['MONTH'] = cleanText(obj['MONTH']).toUpperCase();
+                data.push(obj);
+            }
+            if (dropped) console.warn(dropped + ' row(s) had a mismatched column count (padded, not dropped)');
+            console.log('CSV parsed: ' + data.length + ' records; headers:', headers);
             return data;
         }
 
@@ -1323,7 +1360,8 @@
 
             try {
                 // Load main data
-                const response = await fetch(SHEET_URL, {
+                const response = await fetch(SHEET_URL + (SHEET_URL.includes('?') ? '&' : '?') + '_=' + Date.now(), {
+                    cache: 'no-store',
                     method: 'GET',
                     headers: {
                         'Accept': 'text/csv'
@@ -1366,13 +1404,14 @@
                     <div class="success-notice">
                         <h4>✅ Data Loaded Successfully</h4>
                         <p>Loaded ${allData.length} records from Google Sheets. Last updated: ${new Date().toLocaleString('en-IN')}</p>
+                        <p>Last sheet row received: ${(() => { const r = [...allData].reverse().find(x => x['analysed by']); return r ? (r['date'] || r['DATE'] || '') + ' — ' + r['analysed by'] : 'n/a'; })()}</p>
                     </div>
                 `;
 
                 // Auto-hide success notice after 5 seconds
                 setTimeout(() => {
                     noticeContainer.innerHTML = '';
-                }, 5000);
+                }, 20000);
 
             } catch (error) {
                 console.error('Error loading data:', error);
